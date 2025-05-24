@@ -18,7 +18,7 @@ export default function Sobre() {
           <li>Navegação com React Router</li>
         </ul>
         <p className="text-gray-400">
-          Desenvolvido por <strong>Seu Nome</strong> como parte de um projeto de estudo.
+          Desenvolvido por <strong>Jeremias O Nunes</strong> como parte de um projeto de estudo.
         </p>
       </main>
     </div>
