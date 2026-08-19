@@ -30,4 +30,16 @@ export default [
       ],
     },
   },
+  {
+    // `context/*.jsx` exporta o Provider (componente) + o hook de consumo
+    // (`useAuth`) no mesmo arquivo, de propósito — é a convenção fechada de
+    // toda a camada de Context do projeto, não um export solto por engano.
+    files: ['src/context/**/*.jsx'],
+    rules: {
+      'react-refresh/only-export-components': [
+        'warn',
+        { allowConstantExport: true, allowExportNames: ['useAuth'] },
+      ],
+    },
+  },
 ]

@@ -1,0 +1,41 @@
+/* `min-height: 100vh` mora AQUI agora (antes cada página tinha seu próprio
+ * `min-h-screen`) — é a casca que precisa garantir altura mínima de tela
+ * cheia, não o conteúdo de cada rota individualmente. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* Sem padding aqui de propósito (mudou na Fase 3): a Landing precisa de
+ * seções "full bleed", cada uma cuidando do próprio espaçamento interno —
+ * forçar um padding global neste nível dobraria o espaçamento em qualquer
+ * página que já tem o seu. Cada página aplica o próprio padding/max-width
+ * quando faz sentido pra ela (`Home`/`Sobre` fazem isso). */
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Fora da tela por padrão (não `display:none` — isso tiraria do fluxo de
+ * foco do teclado, o oposto do que este link existe pra fazer); `:focus` o
+ * traz de volta pra dentro da viewport, no topo. `z-index` alto porque
+ * precisa ficar por cima do `Header` sticky (`z-index: 50`). */
+.skipLink {
+  position: absolute;
+  top: 0;
+  left: -9999px;
+  z-index: 100;
+  padding: var(--space-2) var(--space-4);
+  background: var(--primary);
+  color: var(--on-primary);
+  border-radius: var(--radius-sm);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
+.skipLink:focus {
+  left: var(--space-4);
+  top: var(--space-4);
+}

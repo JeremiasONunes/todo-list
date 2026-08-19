@@ -1,61 +1,114 @@
-// Importa o hook useState para gerenciar o estado do input
-import { useState } from "react";
+import { useId, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 
-// Componente TaskForm - formulário para adicionar novas tarefas
-// Recebe 'onAdd' como prop - função que será chamada quando uma tarefa for adicionada
-export default function TaskForm({ onAdd }) {
-  // Estado local para armazenar o texto digitado no input
-  // Inicializa com string vazia
-  const [text, setText] = useState("");
+import { useAtualizarTask } from '../hooks/useAtualizarTask'
+import { useCriarTask } from '../hooks/useCriarTask'
+import { Button } from './Button'
+import { Input } from './Input'
+import { Select } from './Select'
+import styles from '../styles/components/TaskForm.module.css'
 
-  // Função que lida com o envio do formulário
-  const handleSubmit = (e) => {
-    // Previne o comportamento padrão do formulário (recarregar a página)
-    e.preventDefault();
-    
-    // Remove espaços em branco do início e fim do texto
-    const trimmed = text.trim();
-    
-    // Se o texto estiver vazio após o trim, não faz nada
-    if (trimmed.length === 0) return;
-    
-    // Chama a função onAdd (vinda do componente pai) passando o texto
-    onAdd(trimmed);
-    
-    // Limpa o campo de input após adicionar a tarefa
-    setText("");
-  };
+const esquema = z.object({
+  titulo: z.string().min(1, 'Informe o título da tarefa.'),
+  prioridade: z.enum(['baixa', 'media', 'alta', 'urgente']),
+  prazo: z.string().optional(),
+})
+
+/**
+ * Um formulário só, dois modos — `tarefaEmEdicao` presente = editar (`TaskCard`
+ * abre isto dentro de um `Modal`); ausente = criar (fica inline no topo de
+ * `TasksPage`, mesmo lugar onde a versão anterior do app já vivia). Evita
+ * ter `TaskForm` E `EditTaskForm` quase idênticos — a única diferença real
+ * entre criar e editar é qual mutation dispara no fim.
+ * @param {{ tarefaEmEdicao?: object, aoSalvar: () => void, aoCancelar?: () => void }} props
+ */
+function TaskForm({ tarefaEmEdicao, aoSalvar, aoCancelar }) {
+  const [erroGeral, setErroGeral] = useState(null)
+  const editando = !!tarefaEmEdicao
+  // `useId()` — o mesmo `TaskForm` pode existir DUAS vezes na página ao
+  // mesmo tempo (o inline de criar + este reaberto dentro do Modal pra
+  // editar); ids fixos ("titulo", "prioridade"...) colidiriam, invalidando
+  // o HTML e quebrando a associação label↔campo assim que o modal abrisse.
+  const idBase = useId()
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm({
+    resolver: zodResolver(esquema),
+    defaultValues: {
+      titulo: tarefaEmEdicao?.titulo ?? '',
+      prioridade: tarefaEmEdicao?.prioridade ?? 'media',
+      prazo: tarefaEmEdicao?.prazo ?? '',
+    },
+  })
+
+  const { criar } = useCriarTask()
+  const { atualizar } = useAtualizarTask()
+
+  async function aoSubmeter(dados) {
+    setErroGeral(null)
+    // Campo de data vazio (`''`) significa "sem prazo" — vira `null`, não
+    // uma string vazia salva sem sentido.
+    const payload = { ...dados, prazo: dados.prazo || null }
+
+    try {
+      if (editando) {
+        await atualizar(tarefaEmEdicao.id, payload)
+      } else {
+        await criar(payload)
+        reset()
+      }
+      aoSalvar()
+    } catch (erro) {
+      setErroGeral(erro.message)
+    }
+  }
 
   return (
-    // Formulário com layout flex horizontal
-    <form onSubmit={handleSubmit} className="flex gap-4">
-      {/* 
-        Classes do form:
-        - flex: layout horizontal
-        - gap-4: espaçamento de 16px entre elementos filhos
-      */}
-      
-      {/* Campo de input para digitar a tarefa */}
-      {/* 
-        Classes do input:
-        - input-modern: estilo customizado definido no CSS
-        - flex-1: ocupa todo o espaço disponível no container flex
-      */}
-      <input
-        type="text"
-        value={text} // Valor controlado pelo estado React
-        onChange={(e) => setText(e.target.value)} // Atualiza o estado a cada digitação
-        placeholder="✨ Digite uma nova tarefa" // Texto de exemplo
-        className="input-modern flex-1"
+    <form onSubmit={handleSubmit(aoSubmeter)} className={styles.formulario} noValidate>
+      <Input
+        label="Título"
+        id={`${idBase}-titulo`}
+        placeholder="O que você precisa fazer?"
+        error={errors.titulo?.message}
+        {...register('titulo')}
       />
-      
-      {/* Botão para enviar o formulário */}
-      <button
-        type="submit" // Tipo submit faz o botão disparar o evento onSubmit do form
-        className="btn-primary" // Classe customizada para estilo do botão primário
-      >
-        ➕ Adicionar
-      </button>
+      <div className={styles.linha}>
+        <Select label="Prioridade" id={`${idBase}-prioridade`} {...register('prioridade')}>
+          <option value="baixa">Baixa</option>
+          <option value="media">Média</option>
+          <option value="alta">Alta</option>
+          <option value="urgente">Urgente</option>
+        </Select>
+        <Input
+          label="Prazo (opcional)"
+          id={`${idBase}-prazo`}
+          type="date"
+          {...register('prazo')}
+        />
+      </div>
+      {erroGeral ? (
+        <p role="alert" className={styles.erroGeral}>
+          {erroGeral}
+        </p>
+      ) : null}
+      <div className={styles.acoes}>
+        {aoCancelar ? (
+          <Button type="button" variant="ghost" onClick={aoCancelar}>
+            Cancelar
+          </Button>
+        ) : null}
+        <Button type="submit" variant="primary" disabled={isSubmitting}>
+          {isSubmitting ? 'Salvando...' : editando ? 'Salvar alterações' : '+ Adicionar tarefa'}
+        </Button>
+      </div>
     </form>
-  );
+  )
 }
+
+export { TaskForm }

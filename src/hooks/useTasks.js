@@ -1,88 +1,61 @@
-// Importando hooks do React para gerenciar estado e efeitos colaterais
-import { useState, useEffect } from "react";
+import { useCallback } from 'react'
 
-// Hook customizado para gerenciar todas as operações relacionadas às tarefas
-export function useTasks() {
-  // Estado das tarefas - inicializa carregando dados do localStorage
-  // useState com função lazy: só executa na primeira renderização
-  const [tasks, setTasks] = useState(() => {
-    // Tenta recuperar tarefas salvas no navegador
-    const saved = localStorage.getItem("tarefas");
-    // Se existir dados salvos, converte de JSON para array, senão retorna array vazio
-    return saved ? JSON.parse(saved) : [];
-  });
+import { useAuth } from '../context/AuthContext'
+import { taskService } from '../services/taskService'
+import { useAsync } from './useAsync'
 
-  // Estado para o termo de busca/filtro das tarefas
-  const [searchTerm, setSearchTerm] = useState("");
+const PESO_PRIORIDADE = { urgente: 0, alta: 1, media: 2, baixa: 3 }
 
-  // Efeito que salva as tarefas no localStorage sempre que o array tasks mudar
-  // Isso garante persistência dos dados entre sessões do navegador
-  useEffect(() => {
-    localStorage.setItem("tarefas", JSON.stringify(tasks));
-  }, [tasks]); // Dependência: executa quando 'tasks' mudar
+function ordenar(tasks, ordenarPor) {
+  const copia = [...tasks]
 
-  // Função para adicionar uma nova tarefa
-  const addTask = (text) => {
-    // Cria objeto da nova tarefa com propriedades necessárias
-    const newTask = {
-      id: Date.now(), // ID único baseado no timestamp atual
-      text, // Texto da tarefa (shorthand property)
-      completed: false, // Nova tarefa sempre começa como não concluída
-    };
-    // Atualiza o estado adicionando a nova tarefa no início do array
-    // Usa função callback para acessar o estado anterior de forma segura
-    setTasks((prev) => [newTask, ...prev]);
-  };
+  if (ordenarPor === 'prazo') {
+    // Sem prazo vai pro fim da lista — não faz sentido competir por posição
+    // com tarefas que têm data real.
+    return copia.sort((a, b) => {
+      if (!a.prazo) return 1
+      if (!b.prazo) return -1
+      return new Date(a.prazo) - new Date(b.prazo)
+    })
+  }
 
-  // Função para alternar o status de conclusão de uma tarefa
-  const toggleTask = (id) => {
-    setTasks((prev) =>
-      // Mapeia todas as tarefas, modificando apenas a que tem o ID correspondente
-      prev.map((task) =>
-        task.id === id 
-          ? { ...task, completed: !task.completed } // Inverte o status completed
-          : task // Mantém a tarefa inalterada
-      )
-    );
-  };
+  if (ordenarPor === 'prioridade') {
+    return copia.sort((a, b) => PESO_PRIORIDADE[a.prioridade] - PESO_PRIORIDADE[b.prioridade])
+  }
 
-  // Função para deletar uma tarefa pelo ID
-  const deleteTask = (id) => {
-    // Filtra o array removendo a tarefa com o ID especificado
-    setTasks((prev) => prev.filter((task) => task.id !== id));
-  };
-
-  // Função para editar o texto de uma tarefa existente
-  const editTask = (id, newText) => {
-    setTasks((prev) =>
-      // Mapeia todas as tarefas, atualizando apenas a que tem o ID correspondente
-      prev.map((task) =>
-        task.id === id 
-          ? { ...task, text: newText } // Atualiza o texto da tarefa
-          : task // Mantém a tarefa inalterada
-      )
-    );
-  };
-
-  // Lógica de filtro/busca das tarefas
-  // Só aplica filtro se o termo de busca tiver 3 ou mais caracteres
-  const filteredTasks =
-    searchTerm.length >= 3
-      ? tasks.filter((task) =>
-          // Busca case-insensitive: converte ambos para minúsculo
-          task.text.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      : tasks; // Se termo for menor que 3 chars, mostra todas as tarefas
-
-  // Retorna objeto com todos os estados e funções que os componentes precisam
-  return {
-    tasks, // Array completo de tarefas
-    filteredTasks, // Array filtrado pela busca
-    searchTerm, // Termo atual de busca
-    setSearchTerm, // Função para atualizar termo de busca
-    addTask, // Função para adicionar tarefa
-    toggleTask, // Função para marcar/desmarcar tarefa
-    deleteTask, // Função para deletar tarefa
-    editTask, // Função para editar tarefa
-  };
+  // 'recente' (padrão)
+  return copia.sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm))
 }
+
+/**
+ * Leitura das tarefas do usuário logado, já filtradas e ordenadas — mesmo
+ * padrão do Lythra (`useFeed`): busca, filtro e ordenação client-side, sobre
+ * uma lista pequena, dentro do próprio hook (não tem sentido criar um
+ * parâmetro de query pro service pra isto).
+ *
+ * Busca com mínimo de 3 caracteres preservada da versão anterior do app —
+ * era um comportamento que já funcionava bem, não uma decisão desta fase.
+ * @param {{ busca?: string, status?: 'todas'|'pendente'|'concluida', prioridade?: 'todas'|'baixa'|'media'|'alta'|'urgente', ordenarPor?: 'recente'|'prazo'|'prioridade' }} filtros
+ */
+function useTasks(filtros = {}) {
+  const { usuario } = useAuth()
+  const { busca = '', status = 'todas', prioridade = 'todas', ordenarPor = 'recente' } = filtros
+
+  const buscar = useCallback(async () => {
+    const tasks = await taskService.listarPorUsuario(usuario.id)
+    const termo = busca.trim().toLowerCase()
+
+    const filtradas = tasks.filter((task) => {
+      const bateBusca = termo.length < 3 || task.titulo.toLowerCase().includes(termo)
+      const bateStatus = status === 'todas' || task.status === status
+      const batePrioridade = prioridade === 'todas' || task.prioridade === prioridade
+      return bateBusca && bateStatus && batePrioridade
+    })
+
+    return ordenar(filtradas, ordenarPor)
+  }, [usuario.id, busca, status, prioridade, ordenarPor])
+
+  return useAsync(buscar)
+}
+
+export { useTasks }
